@@ -44,7 +44,8 @@ export class SpawnExecutor {
     const child = spawn(options.command, options.args, {
       cwd: options.cwd ?? process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: false
+      // Windows 下 spawn 不走 shell，找不到 PATH 里的 .cmd 文件，需要开启 shell
+      shell: process.platform === 'win32'
     })
 
     this.activeProcesses.set(taskId, child)

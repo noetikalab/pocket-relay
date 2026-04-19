@@ -1,5 +1,6 @@
 import type { IChannel } from './IChannel'
 import { LarkChannel } from './lark/LarkChannel'
+import { QQChannel } from './qq/QQChannel'
 
 /**
  * 所有已实现的 channel 类型。
@@ -7,7 +8,7 @@ import { LarkChannel } from './lark/LarkChannel'
  * 新增 channel 时只需在此处添加类型，并在 createChannel / CHANNEL_REQUIRED_CONFIG 中补充对应逻辑。
  * core 层（start.ts）无需改动。
  */
-export const SUPPORTED_CHANNELS = ['lark'] as const
+export const SUPPORTED_CHANNELS = ['lark', 'qq'] as const
 
 /** Channel 类型联合 */
 export type ChannelType = (typeof SUPPORTED_CHANNELS)[number]
@@ -18,7 +19,8 @@ export type ChannelType = (typeof SUPPORTED_CHANNELS)[number]
  * 用于 core 层统一做缺失配置校验，避免各 channel 的校验逻辑散落在 start.ts 里。
  */
 export const CHANNEL_REQUIRED_CONFIG: Record<ChannelType, string[]> = {
-  lark: ['larkAppId', 'larkAppSecret']
+  lark: ['larkAppId', 'larkAppSecret'],
+  qq: ['qqAppId', 'qqAppSecret']
 }
 
 /**
@@ -31,5 +33,7 @@ export function createChannel(channelType: ChannelType, config: Record<string, s
   switch (channelType) {
     case 'lark':
       return new LarkChannel({ appId: config.larkAppId, appSecret: config.larkAppSecret })
+    case 'qq':
+      return new QQChannel({ appId: config.qqAppId, appSecret: config.qqAppSecret })
   }
 }

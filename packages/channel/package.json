@@ -14,10 +14,13 @@
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "^1.60.0",
-    "@pocket-relay/types": "workspace:*"
+    "@pocket-relay/types": "workspace:*",
+    "qq-guild-bot": "^2.9.5",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.4.0"
   }
 }
