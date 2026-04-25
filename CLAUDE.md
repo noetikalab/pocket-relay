@@ -44,7 +44,7 @@ packages/
 ### 2. 目录结构规范
 - **cli/** - 只放 `pcr xxx` CLI 命令
 - **daemon/** - 只放 Daemon 相关和飞书斜线命令（`/xxx`）
-- **daemon/commands/** - 斜线命令必须实现 `IDaemonCommand` 接口
+- **daemon/commands/** - 飞书斜线命令必须实现 `IFeishuCommand` 接口
 - **禁止**: 命令通过接口访问 Daemon，**不能直接访问私有方法**
 
 ### 3. 斜线命令规范
@@ -85,33 +85,19 @@ packages/
 |------|------|
 | `pnpm build` | 构建整个项目（根目录 tsup） |
 | `pnpm dev` | 监听模式构建（watch 所有源码变化） |
-| `pnpm lint` | ESLint 检查代码质量 |
-| `pnpm format` | Prettier 格式化所有源码 |
+| `pnpm start` | 直接运行已构建产物 |
 | `npm link` | 链接到全局 |
 | `pcr --help` | 查看 CLI 帮助 |
+| `pcr start` | 启动 Daemon（Spawn 模式，默认） |
+| `pcr start --executor-mode acp` | 启动 Daemon（ACP 长连接模式） |
+| `pcr config list` | 查看所有配置项 |
 
-## Git 工作流
+## 构建配置说明
 
-- 主干开发模式，唯一长期分支：`main`
-- 必须使用 rebase 方式，禁止 merge commit
-- `git pull` 已配置 `pull.rebase=true`，自动 rebase
-- GitHub 已开启 `Require linear history`
-
-## 代码规范
-
-- **格式化**: Prettier（`.prettierrc`）— 无分号、无尾逗号、单引号、100 字符宽度
-- **Lint**: ESLint（`eslint.config.js`）— typescript-eslint，格式规则由 `eslint-config-prettier` 关闭，两者无冲突
-- **职责分工**: Prettier 管格式，ESLint 管代码质量
-- **Git hooks**: husky + lint-staged（pre-commit 自动 format/fix/lint）+ commitlint（commit-msg 校验 Conventional Commits）
-- **Commit 格式**: `type(scope): subject`，type 枚举：feat/fix/docs/style/refactor/test/chore/perf
-
-## 构建规范
-
-- tsup 配置：根目录 `tsup.config.ts`（统一管理，子包无独立构建配置）
+- tsup 配置：根目录 `tsup.config.ts`
 - 输出格式：CJS (`.cjs`)
 - 输出文件：`dist/index.cjs`（根目录）
-- 关键配置：`noExternal: [/@pocket-relay\//]` — 强制 bundle 所有 workspace 包
-- Shebang：通过 `esbuildOptions.banner.js` 注入，不在源码里写
+- 关键配置：`noExternal: [/@pocket-relay\//]` - 强制 bundle 所有 workspace 包
 
 ## Multi-Agent Architecture (多 Agent 架构)
 
@@ -140,21 +126,34 @@ To add support for a new agent (e.g., Codex):
 
 ### Execution Modes
 
-The executor layer supports multiple execution modes:
-- **Spawn mode** (`ClaudeCodeExecutor`): One-shot task execution, new process per task
-- **ACP mode** (`ClaudeCodeAcpExecutor`): Long-running process, supports permission approval and progress updates via callbacks
+The executor layer supports two execution modes, selected via `pcr start --executor-mode`:
+- **Spawn mode** (default): One-shot process per task (`ClaudeCodeExecutor`). Simpler, more reliable.
+- **ACP mode**: Long-running agent with interactive callbacks (`ClaudeCodeAcpExecutor`). Supports permission requests and progress updates but has known output ordering/duplication issues — see `packages/executor/docs/acp-known-issues.md`.
+
+## 三种 ID 类型（必读）
+
+理解这三种 ID 是读懂 Daemon/SessionManager 代码的前提：
+
+| ID | 来源 | 用途 |
+|----|------|------|
+| `chatId` | 飞书消息 | 标识飞书会话，用于回复消息 |
+| `sessionId` | nanoid 生成 | PocketRelay 内部 session 标识 |
+| `claudeSessionId` | Claude Code 返回 | 用于 `--resume` 恢复上下文 |
+
+`SessionManager` 维护 `chatId → { sessionId, claudeSessionId }` 的映射。
+
+## 关键依赖说明
+
+- **`@larksuiteoapi/node-sdk`**: 已通过 pnpm patch 修复 `WSClient.start()` 不等待连接就绪的 bug（见 `patches/` 目录）。升级该包版本前必须重新验证 patch 是否仍适用。
+- **`@agentclientprotocol/claude-agent-acp`**: ACP 模式专用，仅在 `ClaudeCodeAcpExecutor` 中使用。
+- **`@anthropic-ai/claude-agent-sdk`**: 仅用于 `SessionListCommand` 中调用 `listSessions()`。
+
+## 深度文档
+
+`docs/` 目录包含关键设计决策的详细说明：
+- `04-session-chat-id-explained.md` — 三种 ID 的完整解释
+- `05-claude-code-acp-executor.md` — ACP 模式实现细节
+- `08-integrated-session-management.md` — Session 管理架构
+- `10-feishu-card-sdk-guide.md` — 飞书卡片交互实现
 
 **必读**: 每个子包下的 `AGENTS.md`
-
-## Claude Code Skills
-
-项目内置 skills 存放于 `.claude/skills/`，在 Claude Code 中可直接通过 `/project-skill-name` 触发。
-
-| Skill | 触发方式 | 说明 |
-|-------|---------|------|
-| `/project-commit` | "帮我提交"、"commit 一下" | 分析变更，生成 Conventional Commits 格式提交 |
-| `/project-pr-create` | "创建 PR"、"提 PR" | 基于分支差异生成 PR 标题和描述，用户确认后创建 |
-| `/project-pr-fix-comments` | "处理 PR 评论"、"fix comments" | 拉取未解决 review 评论，分析问题给出方案，询问用户是否修复 |
-| `/project-sync-docs` | "更新文档"、"同步文档" | 根据本次工作内容同步更新 CLAUDE.md、AGENTS.md、README.md、docs/ |
-| `/project-ts-init` | "初始化 ts 项目"、"新建 ts 项目" | 从零搭建完整 TypeScript Node.js 工程配置 |
-| `/project-ts-audit` | "检查项目配置"、"审计工程配置" | 审计 TS 工程配置，识别缺失项并提出修复方案 |
